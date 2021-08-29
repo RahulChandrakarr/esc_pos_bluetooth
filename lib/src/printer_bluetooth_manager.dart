@@ -66,11 +66,17 @@ class PrinterBluetoothManager {
     _selectedPrinter = printer;
   }
 
-  Future<PosPrintResult> writeBytes(
-    List<int> bytes, {
-    int chunkSizeBytes = 20,
-    int queueSleepTimeMs = 20,
-  }) async {
+  Future<dynamic> connect(BluetoothDevice device) async {
+    await _bluetoothManager.connect(_selectedPrinter._device);
+  }
+
+  void setListener(void Function(int) onData,
+      {Function onError, void Function() onDone, bool cancelOnError}) {
+    _bluetoothManager.state.listen(onData,
+        onError: onError, onDone: onDone, cancelOnError: cancelOnError);
+  }
+
+  Future<PosPrintResult> writeBytes(List<int> bytes) async {
     if (_selectedPrinter == null) {
       return Future<PosPrintResult>.value(PosPrintResult.printerNotSelected);
     } else if (_isScanning.value) {
@@ -79,10 +85,15 @@ class PrinterBluetoothManager {
       return Future<PosPrintResult>.value(PosPrintResult.printInProgress);
     }
 
+    if (_isPrinting) {
+      return PosPrintResult.printInProgress;
+    }
+
+    _isPrinting = true;
+
     // We have to rescan before connecting, otherwise we can connect only once
     await _bluetoothManager.startScan(timeout: Duration(seconds: 1));
     await _bluetoothManager.stopScan();
-
     // Subscribe to the events
     _bluetoothManager.state.listen((state) async {
       switch (state) {
@@ -100,38 +111,20 @@ class PrinterBluetoothManager {
     // Connect
     await _bluetoothManager.connect(_selectedPrinter._device);
 
-    if (!_isPrinting) {
-      _isPrinting = true;
-      final len = bytes.length;
-      List<List<int>> chunks = [];
-      for (var i = 0; i < len; i += chunkSizeBytes) {
-        var end = (i + chunkSizeBytes < len) ? i + chunkSizeBytes : len;
-        chunks.add(bytes.sublist(i, end));
-      }
-
-      for (var i = 0; i < chunks.length; i += 1) {
-        await _bluetoothManager.writeData(chunks[i]);
-        sleep(Duration(milliseconds: queueSleepTimeMs));
-      }
-    }
-
-    _isPrinting = false;
+    await _bluetoothManager.writeData(bytes);
+    sleep(Duration(seconds: 1));
     await _bluetoothManager.disconnect();
+    _isPrinting = false;
+
     return PosPrintResult.success;
   }
 
-  Future<PosPrintResult> printTicket(
-    Ticket ticket, {
-    int chunkSizeBytes = 20,
-    int queueSleepTimeMs = 20,
-  }) async {
+  Future<PosPrintResult> printTicket(Ticket ticket) async {
     if (ticket == null || ticket.bytes.isEmpty) {
       return Future<PosPrintResult>.value(PosPrintResult.ticketEmpty);
     }
     return writeBytes(
       ticket.bytes,
-      chunkSizeBytes: chunkSizeBytes,
-      queueSleepTimeMs: queueSleepTimeMs,
     );
   }
 }
