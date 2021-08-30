@@ -51,8 +51,8 @@ class PrinterBluetoothManager {
         _bluetoothManager.isScanning.listen((isScanningCurrent) async {
       // If isScanning value changed (scan just stopped)
       if (_isScanning.value && !isScanningCurrent) {
-        _scanResultsSubscription.cancel();
-        _isScanningSubscription.cancel();
+        _scanResultsSubscription?.cancel();
+        _isScanningSubscription?.cancel();
       }
       _isScanning.add(isScanningCurrent);
     });
@@ -66,16 +66,6 @@ class PrinterBluetoothManager {
     _selectedPrinter = printer;
   }
 
-  Future<dynamic> connect(BluetoothDevice device) async {
-    await _bluetoothManager.connect(_selectedPrinter._device);
-  }
-
-  void setListener(void Function(int) onData,
-      {Function onError, void Function() onDone, bool cancelOnError}) {
-    _bluetoothManager.state.listen(onData,
-        onError: onError, onDone: onDone, cancelOnError: cancelOnError);
-  }
-
   Future<PosPrintResult> writeBytes(List<int> bytes) async {
     if (_selectedPrinter == null) {
       return Future<PosPrintResult>.value(PosPrintResult.printerNotSelected);
@@ -83,10 +73,6 @@ class PrinterBluetoothManager {
       return Future<PosPrintResult>.value(PosPrintResult.scanInProgress);
     } else if (_isPrinting) {
       return Future<PosPrintResult>.value(PosPrintResult.printInProgress);
-    }
-
-    if (_isPrinting) {
-      return PosPrintResult.printInProgress;
     }
 
     _isPrinting = true;
@@ -109,22 +95,22 @@ class PrinterBluetoothManager {
     });
 
     // Connect
-    await _bluetoothManager.connect(_selectedPrinter._device);
+    await _bluetoothManager
+        .connect(_selectedPrinter?._device ?? BluetoothDevice());
 
     await _bluetoothManager.writeData(bytes);
     sleep(Duration(seconds: 1));
-    await _bluetoothManager.disconnect();
-    _isPrinting = false;
+    try {
+      await _bluetoothManager.disconnect();
+    } catch (error) {
+      print('Failed to disconnect: $error');
+    }
 
+    _isPrinting = false;
     return PosPrintResult.success;
   }
 
-  Future<PosPrintResult> printTicket(Ticket ticket) async {
-    if (ticket == null || ticket.bytes.isEmpty) {
-      return Future<PosPrintResult>.value(PosPrintResult.ticketEmpty);
-    }
-    return writeBytes(
-      ticket.bytes,
-    );
+  Future<PosPrintResult> printTicket(List<int> bytes) async {
+    return writeBytes(bytes);
   }
 }
